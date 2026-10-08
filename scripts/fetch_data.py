@@ -413,7 +413,25 @@ def main():
                 pok += 1
                 pd[sym] = out
     write_json(os.path.join(DATA, "prices.json"), {"updated": STAMP, "symbols": pd})
-    log(f"prices done: {pok} ok, {perr} fail")
+    # split into ~110KB parts (single argv limit for API pushes)
+    pdir = os.path.join(DATA, "prices")
+    os.makedirs(pdir, exist_ok=True)
+    for f in os.listdir(pdir):
+        if f.startswith("part-"): os.remove(os.path.join(pdir, f))
+    parts, cur, cur_size, nparts = [], {}, 0, 0
+    for sym in sorted(pd.keys()):
+        blob = json.dumps({sym: pd[sym]}, ensure_ascii=False, separators=(",", ":"))
+        if cur and cur_size + len(blob) > 110000:
+            nparts += 1
+            write_json(os.path.join(pdir, f"part-{nparts:02d}.json"),
+                       {"updated": STAMP, "symbols": cur})
+            cur, cur_size = {}, 0
+        cur[sym] = pd[sym]; cur_size += len(blob)
+    if cur:
+        nparts += 1
+        write_json(os.path.join(pdir, f"part-{nparts:02d}.json"),
+                   {"updated": STAMP, "symbols": cur})
+    log(f"prices done: {pok} ok, {perr} fail, {nparts} parts")
     funds, ferr = {}, []
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {ex.submit(fetch_fundamentals, t): t for t in tickers}
@@ -450,7 +468,7 @@ def main():
     log(f"insider done: {len(iok)} ok, {len(ifail)} skipped/failed")
     fetch_market(tickers)
     write_json(os.path.join(DATA, "coverage.json"), {
-        "updated": STAMP, "tickers": tickers,
+        "updated": STAMP, "tickers": tickers, "price_parts": nparts,
         "prices_ok": pok, "fundamentals_fail": ferr,
         "options_fail": oerr, "insider_ok": iok, "insider_skip": ifail,
     })
