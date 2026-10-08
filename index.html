@@ -253,10 +253,18 @@ function tuisuan(rows){
 }
 // ---------- panels ----------
 let _PC=null,_OC=null,_IC=null;
+async function loadPrices(){
+ if(_PC)return _PC;
+ const cov=await jget("data/coverage.json").catch(()=>({price_parts:17}));
+ const n=cov.price_parts||17,all={};
+ const ps=await Promise.all(Array.from({length:n},(_,i)=>jget("data/prices/part-"+String(i+1).padStart(2,"0")+".json").catch(()=>null)));
+ for(const q of ps)if(q&&q.symbols)Object.assign(all,q.symbols);
+ _PC={symbols:all};return _PC;
+}
 async function load(sym){
  CUR=sym;$("symhead").style.display="block";
  try{
-  if(!_PC)_PC=await jget("data/prices.json");
+  await loadPrices();
   const pr=_PC.symbols[sym];if(!pr)throw 0;
   const rows=pr.rows;
   $("symname").textContent=sym+" · "+(pr.name||sym);
